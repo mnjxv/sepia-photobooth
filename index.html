@@ -102,10 +102,10 @@
       <div class="tag" style="margin-top:0">Your print</div>
       <canvas id="strip"></canvas>
       <div class="actions">
-        <button class="big" id="download" disabled>Download</button>
+        <button class="big" id="download" disabled>Save</button>
         <button class="big" id="retake" disabled style="background:#e4dccb;color:#4d2f19;box-shadow:none;border:1px solid var(--line)">Retake</button>
       </div>
-      <p class="hint">Change layout, pattern or color any time, even after your photos are taken.</p>
+      <p class="hint">Change layout, pattern or color any time, even after your photos are taken.<br>On phones and tablets, tap Save, then choose Save Image.</p>
     </section>
   </main>
 
@@ -314,7 +314,15 @@ const FILTERS = {
   warm:    { label: "Warm",    css: "sepia(.3) saturate(1.3)" },
   pop:     { label: "Pop",     css: "saturate(1.7) contrast(1.15)" }
 };
-let filter = "none", busy = false;
+let filter = "none", busy = false, readyBlob = null;
+
+// Redraw the print and, once all photos exist, prepare the PNG ahead of time
+// so the Save button can share/download instantly (phones require this).
+function redraw() {
+  draw(strip);
+  readyBlob = null;
+  if (photos.length === SHOTS) strip.toBlob(b => { readyBlob = b; }, "image/png");
+}
 
 function pills(containerId, entries, current, onPick) {
   const box = $(containerId);
@@ -326,15 +334,15 @@ function pills(containerId, entries, current, onPick) {
     box.appendChild(b);
   });
 }
-pills("layouts", Object.entries(LAYOUTS), layout, k => { layout = k; draw(strip); });
-pills("patterns", Object.entries(PATTERNS), pattern, k => { pattern = k; draw(strip); });
+pills("layouts", Object.entries(LAYOUTS), layout, k => { layout = k; redraw(); });
+pills("patterns", Object.entries(PATTERNS), pattern, k => { pattern = k; redraw(); });
 pills("filters", Object.entries(FILTERS).map(([k, f]) => [k, f.label]), filter, k => { filter = k; video.style.filter = FILTERS[k].css; });
 
 THEMES.forEach((t, i) => {
   const b = document.createElement("button");
   b.className = "swatch" + (i === themeIdx ? " active" : "");
   b.style.background = t.bg; b.title = t.name;
-  b.onclick = () => { themeIdx = i; [...$("colors").children].forEach(x => x.classList.toggle("active", x === b)); draw(strip); };
+  b.onclick = () => { themeIdx = i; [...$("colors").children].forEach(x => x.classList.toggle("active", x === b)); redraw(); };
   $("colors").appendChild(b);
 });
 
@@ -391,7 +399,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function run() {
   if (busy) return;
   busy = true; startBtn.disabled = true; dlBtn.disabled = true; retakeBtn.disabled = true;
-  photos = []; draw(strip);
+  photos = []; redraw();
   [...$("thumbs").children].forEach(t => t.style.backgroundImage = "");
   for (let i = 0; i < SHOTS; i++) {
     for (let n = 3; n >= 1; n--) { countEl.textContent = n; await sleep(1000); }
@@ -400,7 +408,7 @@ async function run() {
     const shot = capture();
     photos.push(shot);
     $("thumbs").children[i].style.backgroundImage = "url(" + shot.toDataURL("image/jpeg", 0.7) + ")";
-    draw(strip);
+    redraw();
     await sleep(80);
     flashEl.classList.remove("on");
     await sleep(900);
@@ -411,14 +419,25 @@ async function run() {
 
 startBtn.onclick = run;
 retakeBtn.onclick = run;
-dlBtn.onclick = () => {
+dlBtn.onclick = async () => {
+  const blob = readyBlob;
+  if (!blob) return;
+  const name = "sepia-" + layout + ".png";
+  const file = new File([blob], name, { type: "image/png" });
+  // Phones and tablets: open the share sheet (Save Image, Save to Photos, AirDrop, apps...)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Sepia" }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  // Computers: normal download
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.download = "sepia-" + layout + ".png";
-  a.href = strip.toDataURL("image/png");
-  a.click();
+  a.download = name; a.href = url;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
-draw(strip);
+redraw();
 startCamera();
 </script>
 </body>
