@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sepia</title>
+<style>
+  :root { --cream:#e6e3dc; --paper:#f3f0ea; --ink:#1c130c; --b1:#d3a56b; --b2:#6b4328; --muted:#7b6a5a; --line:#c9a674; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; color:var(--ink);
+         font-family:"Helvetica Neue", Arial, sans-serif;
+         background: radial-gradient(ellipse at 50% 0%, #f5f2eb 0%, #e6e3dc 55%, #d8d4c9 100%); }
+  header { text-align:center; padding:32px 16px 4px; }
+  h1 { margin:0; font-family:Georgia,"Times New Roman",serif; font-style:italic; font-weight:400;
+       font-size:clamp(48px,9vw,84px); letter-spacing:-2px; line-height:1.1;
+       background:linear-gradient(180deg,#2b1b10 10%,#8d5f36 70%,#c9a068); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { margin:4px 0 0; font-size:12px; letter-spacing:4px; text-transform:uppercase; color:var(--muted); }
+  .rule { width:min(520px,70%); height:2px; margin:16px auto 0; background:linear-gradient(90deg,transparent,var(--b2),transparent); }
+
+  main { flex:1; width:100%; max-width:1180px; margin:0 auto; padding:26px 18px 44px;
+         display:flex; flex-wrap:wrap; gap:28px; justify-content:center; align-items:flex-start; }
+  .panel { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:18px;
+           box-shadow:3px 5px 10px rgba(40,25,10,.28); }
+  .camera { flex:1 1 470px; max-width:610px; }
+  .preview { flex:1 1 340px; max-width:440px; text-align:center; position:sticky; top:16px; }
+
+  .stage { position:relative; aspect-ratio:4/3; background:#120c07; border-radius:8px; overflow:hidden;
+           border:3px solid #2a1c10; box-shadow:0 0 0 1px var(--b1); }
+  video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); display:block; }
+  #count { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+           font-family:Georgia,serif; font-style:italic; font-size:min(30vw,190px); color:#fff6e3;
+           text-shadow:0 4px 24px rgba(0,0,0,.65); pointer-events:none; }
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .35s; }
+  #flash.on { opacity:1; transition:none; }
+  #msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; text-align:center;
+         padding:20px; background:rgba(18,12,7,.9); color:#f3e6cf; }
+
+  .tag { display:inline-block; font-weight:800; font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+         color:#f8ecd6; padding:4px 13px; border-radius:999px; margin:16px 0 8px;
+         background:linear-gradient(135deg,#b4854f,#4d2f19); box-shadow:0 2px 4px rgba(0,0,0,.25); }
+  .row { display:flex; flex-wrap:wrap; gap:7px; }
+  .pill { font:inherit; font-size:13px; cursor:pointer; border:1px solid var(--line); background:transparent;
+          color:var(--ink); padding:6px 13px; border-radius:999px; }
+  .pill:hover { background:#e9e0d0; }
+  .pill.active { background:linear-gradient(135deg,#c99b63,#6b4328); color:#fff7e6; border-color:#6b4328; }
+  .swatch { width:30px; height:30px; padding:0; border-radius:50%; border:1px solid #8f7a5e; }
+  .swatch.active { outline:2px solid #6b4328; outline-offset:2px; background-clip:padding-box; }
+  .swatch:hover { background-clip:padding-box; }
+
+  .thumbs { display:flex; gap:7px; margin-top:16px; }
+  .thumbs div { flex:1; aspect-ratio:4/3; background:#d9d3c5; border:1px solid var(--line); border-radius:5px;
+                background-size:cover; background-position:center; }
+  button.big { font:inherit; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer;
+               border:0; border-radius:999px; padding:14px 28px; margin-top:16px; width:100%; font-size:14px;
+               color:#fff7e6; background:linear-gradient(135deg,#d2a46c,#6b4328); box-shadow:0 3px 8px rgba(60,35,15,.4); }
+  button.big:hover { filter:brightness(1.07); }
+  button.big:disabled { opacity:.45; cursor:default; filter:none; }
+
+  .preview canvas { display:block; width:100%; height:auto; border-radius:3px; box-shadow:0 8px 24px rgba(30,18,8,.45); }
+  .preview .actions { display:flex; gap:10px; margin-top:16px; }
+  .preview .actions .big { margin:0; }
+  .hint { margin:12px 0 0; font-size:12px; color:var(--muted); }
+
+  footer { background:#1d1a17; border-top:4px solid #a97b4a; color:#d9cdb8; text-align:center;
+           padding:22px 16px; font-size:12px; letter-spacing:2px; text-transform:uppercase; }
+  footer b { font-family:Georgia,serif; font-style:italic; font-size:20px; letter-spacing:0; text-transform:none; color:#e2bd86; display:block; margin-bottom:4px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>sepia</h1>
+    <p class="sub">Classic prints &middot; Strips &middot; Polaroids</p>
+    <div class="rule"></div>
+  </header>
+
+  <main>
+    <section class="panel camera">
+      <div class="stage">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="count"></div>
+        <div id="flash"></div>
+        <div id="msg"></div>
+      </div>
+
+      <div class="tag">Layout</div>
+      <div class="row" id="layouts"></div>
+
+      <div class="tag">Pattern</div>
+      <div class="row" id="patterns"></div>
+
+      <div class="tag">Color</div>
+      <div class="row" id="colors"></div>
+
+      <div class="tag">Filter</div>
+      <div class="row" id="filters"></div>
+
+      <div class="thumbs" id="thumbs"><div></div><div></div><div></div><div></div></div>
+      <button class="big" id="start">Start (4 photos)</button>
+    </section>
+
+    <section class="panel preview">
+      <div class="tag" style="margin-top:0">Your print</div>
+      <canvas id="strip"></canvas>
+      <div class="actions">
+        <button class="big" id="download" disabled>Download</button>
+        <button class="big" id="retake" disabled style="background:#e4dccb;color:#4d2f19;box-shadow:none;border:1px solid var(--line)">Retake</button>
+      </div>
+      <p class="hint">Change layout, pattern or color any time, even after your photos are taken.</p>
+    </section>
+  </main>
+
+  <footer><b>sepia</b>Your photos never leave your device</footer>
+
+<script>
+// <draw>
+const THEMES = [
+  { name: "Cream",  bg: "#f2ecde", fg: "#b08d57", ink: "#2a1d12" },
+  { name: "Noir",   bg: "#171412", fg: "#b08d57", ink: "#f1e7d3" },
+  { name: "Bronze", bg: "#8a5a36", fg: "#e8c38a", ink: "#f7ecd9" },
+  { name: "Rose",   bg: "#f6d3dc", fg: "#d4537e", ink: "#4b1528" },
+  { name: "Sky",    bg: "#cfe4f7", fg: "#378add", ink: "#042c53" },
+  { name: "Butter", bg: "#fbefb5", fg: "#ba7517", ink: "#412402" },
+  { name: "Sage",   bg: "#d6e8cf", fg: "#639922", ink: "#173404" }
+];
+const PATTERNS = { none: "Plain", dots: "Polka dots", stripes: "Stripes", diagonal: "Diagonal",
+                   checker: "Checkerboard", gingham: "Gingham", hearts: "Hearts", stars: "Stars" };
+const LAYOUTS  = { strip: "Classic strip", double: "Double strip", grid: "2x2 grid",
+                   combo: "Combo", polaroid: "Polaroid", film: "Film strip" };
+const NEUTRAL = "#e3dfd5";
+
+let layout = "strip", pattern = "none", themeIdx = 0, photos = [];
+
+function fmtDate() {
+  return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }).toUpperCase();
+}
+function heart(ctx, cx, cy, s) {
+  ctx.beginPath(); ctx.moveTo(cx, cy + s * 0.9);
+  ctx.bezierCurveTo(cx + s * 1.6, cy - s * 0.2, cx + s * 0.8, cy - s * 1.3, cx, cy - s * 0.45);
+  ctx.bezierCurveTo(cx - s * 0.8, cy - s * 1.3, cx - s * 1.6, cy - s * 0.2, cx, cy + s * 0.9);
+  ctx.fill();
+}
+function star(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r;
+    const px = cx + Math.cos(a) * rad, py = cy + Math.sin(a) * rad;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath(); ctx.fill();
+}
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+}
+
+function paintPattern(ctx, x, y, w, h, t, p) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = t.bg; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = t.fg; ctx.strokeStyle = t.fg; ctx.globalAlpha = 0.3;
+  if (p === "dots") {
+    for (let r = 0, yy = y + 18; yy < y + h + 18; yy += 36, r++)
+      for (let xx = x + (r % 2 ? 27 : 9); xx < x + w + 18; xx += 36) { ctx.beginPath(); ctx.arc(xx, yy, 6, 0, 7); ctx.fill(); }
+  } else if (p === "stripes") {
+    for (let xx = x; xx < x + w; xx += 44) ctx.fillRect(xx, y, 20, h);
+  } else if (p === "diagonal") {
+    ctx.lineWidth = 16;
+    for (let k = -h; k < w; k += 48) { ctx.beginPath(); ctx.moveTo(x + k, y + h); ctx.lineTo(x + k + h, y); ctx.stroke(); }
+  } else if (p === "checker") {
+    const s = 44;
+    for (let r = 0; r * s < h + s; r++) for (let c = 0; c * s < w + s; c++) if ((r + c) % 2 === 0) ctx.fillRect(x + c * s, y + r * s, s, s);
+  } else if (p === "gingham") {
+    ctx.globalAlpha = 0.16;
+    for (let xx = x; xx < x + w; xx += 48) ctx.fillRect(xx, y, 24, h);
+    for (let yy = y; yy < y + h; yy += 48) ctx.fillRect(x, yy, w, 24);
+  } else if (p === "hearts" || p === "stars") {
+    for (let r = 0, yy = y + 28; yy < y + h + 28; yy += 54, r++)
+      for (let xx = x + (r % 2 ? 54 : 27); xx < x + w + 54; xx += 54) p === "hearts" ? heart(ctx, xx, yy, 9) : star(ctx, xx, yy, 12);
+  }
+  ctx.restore();
+}
+
+function block(ctx, x, y, w, h, t, p) {
+  paintPattern(ctx, x, y, w, h, t, p);
+  ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+}
+
+function photoAt(ctx, i, x, y, w, h) {
+  const img = photos[i];
+  if (img) {
+    const ir = img.width / img.height, r = w / h;
+    let sw = img.width, sh = img.height, sx = 0, sy = 0;
+    if (ir > r) { sw = img.height * r; sx = (img.width - sw) / 2; } else { sh = img.width / r; sy = (img.height - sh) / 2; }
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  } else {
+    ctx.fillStyle = "rgba(60,45,30,.18)"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(60,45,30,.45)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = Math.round(Math.min(w, h) * 0.3) + "px Georgia, serif";
+    ctx.fillText(String(i + 1), x + w / 2, y + h / 2);
+  }
+  ctx.strokeStyle = "rgba(0,0,0,.28)"; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, w, h);
+}
+
+function caption(ctx, cx, cy, color, s, withDate) {
+  ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "italic " + Math.round(44 * s) + 'px Georgia, "Times New Roman", serif';
+  ctx.fillText("sepia", cx, withDate === false ? cy : cy - 12 * s);
+  if (withDate === false) return;
+  ctx.font = Math.round(15 * s) + "px Helvetica, Arial, sans-serif";
+  if ("letterSpacing" in ctx) ctx.letterSpacing = Math.round(3 * s) + "px";
+  ctx.fillText(fmtDate(), cx, cy + 24 * s);
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+}
+
+const stripH = (w, pad, foot) => pad + 4 * ((w - 2 * pad) * 0.75 + pad) + foot;
+function stripBlock(ctx, x, y, w, pad, foot, t, p) {
+  const ph = (w - 2 * pad) * 0.75, h = stripH(w, pad, foot);
+  block(ctx, x, y, w, h, t, p);
+  for (let i = 0; i < 4; i++) photoAt(ctx, i, x + pad, y + pad + i * (ph + pad), w - 2 * pad, ph);
+  caption(ctx, x + w / 2, y + h - foot / 2, t.ink, w / 620);
+  return h;
+}
+const gridH = (w, pad, foot, ratio) => pad + 2 * (((w - 3 * pad) / 2) * ratio + pad) + foot;
+function gridBlock(ctx, x, y, w, pad, foot, ratio, t, p, showDate) {
+  const cw = (w - 3 * pad) / 2, ch = cw * ratio, h = gridH(w, pad, foot, ratio);
+  block(ctx, x, y, w, h, t, p);
+  for (let i = 0; i < 4; i++) photoAt(ctx, i, x + pad + (i % 2) * (cw + pad), y + pad + Math.floor(i / 2) * (ch + pad), cw, ch);
+  caption(ctx, x + w / 2, y + h - foot / 2, t.ink, w / 820, showDate);
+  return h;
+}
+
+function draw(c) {
+  const t = THEMES[themeIdx], p = pattern, ctx = c.getContext("2d");
+  const setup = (w, h) => { c.width = w; c.height = h; ctx.clearRect(0, 0, w, h); };
+
+  if (layout === "strip") {
+    const w = 620, pad = 28, foot = 110;
+    setup(w, stripH(w, pad, foot));
+    stripBlock(ctx, 0, 0, w, pad, foot, t, p);
+
+  } else if (layout === "double") {
+    const w = 470, pad = 22, foot = 96, m = 26, gap = 18, h = stripH(w, pad, foot);
+    setup(m * 2 + w * 2 + gap, m * 2 + h);
+    ctx.fillStyle = NEUTRAL; ctx.fillRect(0, 0, c.width, c.height);
+    stripBlock(ctx, m, m, w, pad, foot, t, p);
+    stripBlock(ctx, m + w + gap, m, w, pad, foot, t, p);
+    ctx.save(); ctx.setLineDash([8, 8]); ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(m + w + gap / 2, 6); ctx.lineTo(m + w + gap / 2, c.height - 6); ctx.stroke(); ctx.restore();
+
+  } else if (layout === "grid") {
+    const w = 820, pad = 28, foot = 130, ratio = 1.1;
+    setup(w, gridH(w, pad, foot, ratio));
+    gridBlock(ctx, 0, 0, w, pad, foot, ratio, t, p);
+
+  } else if (layout === "combo") {
+    const m = 30;
+    setup(1238, 1110);
+    ctx.fillStyle = NEUTRAL; ctx.fillRect(0, 0, c.width, c.height);
+    stripBlock(ctx, m, m, 330, 20, 80, t, p);
+    const sh = stripBlock(ctx, 390, m, 190, 12, 44, t, p);
+    stripBlock(ctx, 594, m, 190, 12, 44, t, p);
+    const g1 = gridBlock(ctx, 390, m + sh + 30, 394, 14, 36, 0.75, t, p, false);
+    gridBlock(ctx, 814, m, 394, 14, 36, 0.75, t, p, false);
+    gridBlock(ctx, 814, m + g1 + 30, 394, 14, 36, 0.75, t, p, false);
+    const ty = m + g1 * 2 + 60, th = c.height - m - ty;
+    block(ctx, 814, ty, 394, th, t, p);
+    caption(ctx, 814 + 197, ty + th / 2, t.ink, 0.9);
+
+  } else if (layout === "polaroid") {
+    setup(1000, 920);
+    paintPattern(ctx, 0, 0, 1000, 920, t, p);
+    const cw = 840, chh = 763, pad = 44, cellW = (cw - 2 * pad - 20) / 2, cellH = cellW * 0.75;
+    ctx.save(); ctx.translate(500, 460); ctx.rotate(-0.022);
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 30; ctx.shadowOffsetY = 14;
+    ctx.fillStyle = "#fbfaf6"; ctx.fillRect(-cw / 2, -chh / 2, cw, chh);
+    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    const gx = -cw / 2 + pad, gy = -chh / 2 + pad;
+    for (let i = 0; i < 4; i++) photoAt(ctx, i, gx + (i % 2) * (cellW + 20), gy + Math.floor(i / 2) * (cellH + 20), cellW, cellH);
+    caption(ctx, 0, -chh / 2 + pad + 2 * cellH + 20 + 80, "#2a1d12", 1.15);
+    ctx.restore();
+
+  } else if (layout === "film") {
+    const fw = 440, side = 52, ph = 252, gap = 28, top = 34, fh = top * 2 + 4 * ph + 3 * gap, m = 30, fx = 60;
+    setup(560, fh + m * 2);
+    paintPattern(ctx, 0, 0, c.width, c.height, t, p);
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = "#14100c"; ctx.fillRect(fx, m, fw, fh); ctx.restore();
+    ctx.fillStyle = "#e8e2d4";
+    for (let yy = m + 14; yy < m + fh - 24; yy += 46) { rr(ctx, fx + 16, yy, 20, 28, 4); ctx.fill(); rr(ctx, fx + fw - 36, yy, 20, 28, 4); ctx.fill(); }
+    for (let i = 0; i < 4; i++) {
+      const py = m + top + i * (ph + gap);
+      photoAt(ctx, i, fx + side, py, fw - 2 * side, ph);
+      ctx.fillStyle = "#c99b63"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.font = "bold 13px Helvetica, Arial, sans-serif";
+      ctx.fillText((i + 1) + "A  \u25B8", fx + side, py + ph + gap / 2);
+    }
+  }
+}
+// </draw>
+
+// ---------- Elements & UI ----------
+const SHOTS = 4, PW = 640, PH = 480;
+const $ = id => document.getElementById(id);
+const video = $("video"), countEl = $("count"), flashEl = $("flash"), msgEl = $("msg");
+const startBtn = $("start"), strip = $("strip"), dlBtn = $("download"), retakeBtn = $("retake");
+
+const FILTERS = {
+  none:    { label: "Normal",  css: "none" },
+  bw:      { label: "B&W",     css: "grayscale(1) contrast(1.1)" },
+  sepia:   { label: "Sepia",   css: "sepia(1)" },
+  vintage: { label: "Vintage", css: "sepia(.6) contrast(.9) brightness(1.1)" },
+  cool:    { label: "Cool",    css: "saturate(1.1) hue-rotate(-10deg)" },
+  warm:    { label: "Warm",    css: "sepia(.3) saturate(1.3)" },
+  pop:     { label: "Pop",     css: "saturate(1.7) contrast(1.15)" }
+};
+let filter = "none", busy = false;
+
+function pills(containerId, entries, current, onPick) {
+  const box = $(containerId);
+  entries.forEach(([key, label]) => {
+    const b = document.createElement("button");
+    b.className = "pill" + (key === current ? " active" : "");
+    b.textContent = label;
+    b.onclick = () => { [...box.children].forEach(x => x.classList.toggle("active", x === b)); onPick(key); };
+    box.appendChild(b);
+  });
+}
+pills("layouts", Object.entries(LAYOUTS), layout, k => { layout = k; draw(strip); });
+pills("patterns", Object.entries(PATTERNS), pattern, k => { pattern = k; draw(strip); });
+pills("filters", Object.entries(FILTERS).map(([k, f]) => [k, f.label]), filter, k => { filter = k; video.style.filter = FILTERS[k].css; });
+
+THEMES.forEach((t, i) => {
+  const b = document.createElement("button");
+  b.className = "swatch" + (i === themeIdx ? " active" : "");
+  b.style.background = t.bg; b.title = t.name;
+  b.onclick = () => { themeIdx = i; [...$("colors").children].forEach(x => x.classList.toggle("active", x === b)); draw(strip); };
+  $("colors").appendChild(b);
+});
+
+async function startCamera() {
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 960 }, facingMode: "user" }, audio: false });
+  } catch (err) {
+    msgEl.style.display = "flex";
+    msgEl.textContent = "Camera not available. Please allow camera access and make sure no other app is using it. " +
+                        "(The camera needs https://, localhost, or opening the file directly.)";
+    startBtn.disabled = true;
+  }
+}
+
+function applyFilter(ctx, w, h, name) {
+  if (name === "none") return;
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (name === "bw") { r = g = b = (gray - 128) * 1.1 + 128; }
+    else if (name === "sepia" || name === "vintage") {
+      const sr = 0.393 * r + 0.769 * g + 0.189 * b, sg = 0.349 * r + 0.686 * g + 0.168 * b, sb = 0.272 * r + 0.534 * g + 0.131 * b;
+      const mix = name === "sepia" ? 1 : 0.6;
+      r += (sr - r) * mix; g += (sg - g) * mix; b += (sb - b) * mix;
+      if (name === "vintage") { r = (r - 128) * 0.9 + 140; g = (g - 128) * 0.9 + 140; b = (b - 128) * 0.9 + 140; }
+    } else if (name === "cool") { r *= 0.9; b *= 1.15; }
+    else if (name === "warm") { r *= 1.1; g *= 1.03; b *= 0.88; }
+    else if (name === "pop") {
+      r = gray + (r - gray) * 1.6; g = gray + (g - gray) * 1.6; b = gray + (b - gray) * 1.6;
+      r = (r - 128) * 1.15 + 128; g = (g - 128) * 1.15 + 128; b = (b - 128) * 1.15 + 128;
+    }
+    d[i] = r; d[i + 1] = g; d[i + 2] = b;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function capture() {
+  const c = document.createElement("canvas"); c.width = PW; c.height = PH;
+  const ctx = c.getContext("2d");
+  const vw = video.videoWidth, vh = video.videoHeight, target = PW / PH;
+  let sw = vw, sh = vw / target;
+  if (sh > vh) { sh = vh; sw = vh * target; }
+  ctx.translate(PW, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, PW, PH);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  applyFilter(ctx, PW, PH, filter);
+  return c;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function run() {
+  if (busy) return;
+  busy = true; startBtn.disabled = true; dlBtn.disabled = true; retakeBtn.disabled = true;
+  photos = []; draw(strip);
+  [...$("thumbs").children].forEach(t => t.style.backgroundImage = "");
+  for (let i = 0; i < SHOTS; i++) {
+    for (let n = 3; n >= 1; n--) { countEl.textContent = n; await sleep(1000); }
+    countEl.textContent = "";
+    flashEl.classList.add("on");
+    const shot = capture();
+    photos.push(shot);
+    $("thumbs").children[i].style.backgroundImage = "url(" + shot.toDataURL("image/jpeg", 0.7) + ")";
+    draw(strip);
+    await sleep(80);
+    flashEl.classList.remove("on");
+    await sleep(900);
+  }
+  busy = false; startBtn.disabled = false; dlBtn.disabled = false; retakeBtn.disabled = false;
+  startBtn.textContent = "Take new photos";
+}
+
+startBtn.onclick = run;
+retakeBtn.onclick = run;
+dlBtn.onclick = () => {
+  const a = document.createElement("a");
+  a.download = "sepia-" + layout + ".png";
+  a.href = strip.toDataURL("image/png");
+  a.click();
+};
+
+draw(strip);
+startCamera();
+</script>
+</body>
+</html>
